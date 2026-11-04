@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "milton-mcp"
+version = "0.1.0"
+description = "MCP server for Milton's analyst agents: technical, fundamental, macro, trade design and the full desk, through Milton's API."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Milton Analytics LLC", email = "support@withmilton.ai" }]
+keywords = ["mcp", "model-context-protocol", "milton", "finance", "agents", "stocks", "options"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = ["mcp>=2.3,<3"]
+
+[project.urls]
+Homepage = "https://withmilton.ai"
+Documentation = "https://withmilton.ai/docs/api/v1"
+Source = "https://github.com/Milton-Analytics-LLC/milton-mcp"
+
+[project.scripts]
+milton-mcp = "milton_mcp.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff==0.15.15", "pyyaml>=6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/milton_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
