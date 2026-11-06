@@ -38,7 +38,9 @@ OPENAPI_FORMATS = {"int32", "int64", "float", "double", "byte", "binary", "passw
 
 def _load(source: str) -> str:
     if source.startswith(("http://", "https://")):
-        with urllib.request.urlopen(source, timeout=30) as resp:
+        # withmilton.ai's Cloudflare rules answer urllib's default "Python-urllib/x.y" with a 403.
+        request = urllib.request.Request(source, headers={"User-Agent": "milton-mcp-schema-generator"})
+        with urllib.request.urlopen(request, timeout=30) as resp:
             return resp.read().decode()
     return Path(source).read_text()
 
