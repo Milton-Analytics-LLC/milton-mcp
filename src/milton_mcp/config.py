@@ -12,10 +12,12 @@ class Settings:
     """Where Milton is and how to call it, from the environment.
 
     The API key is read only in stdio mode. In HTTP mode every request brings its own bearer token,
-    so the server holds no key.
+    so the server holds no key. base_url is the public origin, used for links; api_url is where API
+    calls go, the same origin unless a hosted deployment reaches the api inside its network.
     """
 
     base_url: str = DEFAULT_BASE_URL
+    api_url: str = DEFAULT_BASE_URL
     api_key: str | None = None
     default_model: str | None = None
     default_effort: str | None = None
@@ -28,8 +30,10 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         value = (env.get(name) or "").strip()
         return value or None
 
+    base_url = (get("MILTON_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
     return Settings(
-        base_url=(get("MILTON_BASE_URL") or DEFAULT_BASE_URL).rstrip("/"),
+        base_url=base_url,
+        api_url=(get("MILTON_API_URL") or base_url).rstrip("/"),
         api_key=get("MILTON_API_KEY"),
         default_model=get("MILTON_DEFAULT_MODEL"),
         default_effort=get("MILTON_DEFAULT_EFFORT"),

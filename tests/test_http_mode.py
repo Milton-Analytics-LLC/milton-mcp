@@ -29,14 +29,16 @@ async def test_no_bearer_is_401_with_a_challenge(fake: FakeMilton):
     assert not fake.requests
 
 
-async def run_over_http(fake: FakeMilton, token: str, settings: Settings | None = None):
+async def run_over_http(
+    fake: FakeMilton, token: str, settings: Settings | None = None, headers: dict[str, str] | None = None
+):
     app = make_app(fake, settings)
     inner = app.app
     async with inner.router.lifespan_context(inner):
         http = httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=app),
             base_url="http://127.0.0.1:8000",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {token}", **(headers or {})},
             timeout=30,
         )
         async with http, Client(streamable_http_client("http://127.0.0.1:8000/mcp", http_client=http)) as client:

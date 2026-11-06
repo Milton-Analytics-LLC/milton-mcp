@@ -23,7 +23,7 @@ def fake() -> FakeMilton:
 def make_server(fake: FakeMilton):
     def make(settings: Settings | None = None, keys: IdempotencyKeys | None = None):
         settings = settings or Settings(base_url=BASE_URL, api_key=API_KEY)
-        client = MiltonClient(settings.base_url, transport=fake.transport())
+        client = MiltonClient.from_settings(settings, transport=fake.transport())
         return build_server(MiltonTools(settings, client, http_mode=False, keys=keys))
 
     return make

@@ -83,7 +83,8 @@ class FakeMilton:
         self.pricing_status = 200
 
     def transport(self) -> httpx2.MockTransport:
-        return httpx2.MockTransport(self.handle)
+        # Looked up per request, so a test can swap handle after the server is built.
+        return httpx2.MockTransport(lambda request: self.handle(request))
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
