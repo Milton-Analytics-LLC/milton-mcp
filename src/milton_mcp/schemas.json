@@ -1,0 +1,445 @@
+{
+  "agents": {
+    "desk": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "horizon": {
+            "description": "intraday (same day), swing (days to weeks), position (weeks to months) or long_term (months to years).",
+            "enum": [
+              "intraday",
+              "swing",
+              "position",
+              "long_term"
+            ],
+            "type": "string"
+          },
+          "ticker": {
+            "description": "US stock or ETF symbol, e.g. NVDA.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "horizon",
+          "ticker"
+        ],
+        "type": "object"
+      },
+      "waits": false
+    },
+    "fundamental": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ticker": {
+            "description": "US stock or ETF symbol, e.g. NVDA.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "type": "object"
+      },
+      "waits": true
+    },
+    "macro": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "waits": true
+    },
+    "quant": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "horizon": {
+            "description": "intraday (same day), swing (days to weeks), position (weeks to months) or long_term (months to years).",
+            "enum": [
+              "intraday",
+              "swing",
+              "position",
+              "long_term"
+            ],
+            "type": "string"
+          },
+          "ticker": {
+            "description": "US stock or ETF symbol, e.g. NVDA.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "horizon",
+          "ticker"
+        ],
+        "type": "object"
+      },
+      "waits": true
+    },
+    "technical": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "horizon": {
+            "description": "intraday (same day), swing (days to weeks), position (weeks to months) or long_term (months to years).",
+            "enum": [
+              "intraday",
+              "swing",
+              "position",
+              "long_term"
+            ],
+            "type": "string"
+          },
+          "ticker": {
+            "description": "US stock or ETF symbol, e.g. NVDA.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "horizon",
+          "ticker"
+        ],
+        "type": "object"
+      },
+      "waits": true
+    }
+  },
+  "envelope_schema": {
+    "description": "The result of an agent run. Returned by the create routes and `GET /runs/{runID}`.",
+    "properties": {
+      "agent": {
+        "type": "string"
+      },
+      "conviction": {
+        "anyOf": [
+          {
+            "enum": [
+              "high",
+              "moderate",
+              "low"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "data_as_of": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "details": {
+        "additionalProperties": true,
+        "description": "The agent's full published output (for quant, the validated trade; for risk and portfolio, the agent's assessment over the computed metrics). For desk: `reads` (each read's summary, stance, conviction, key levels, risks and data_as_of, or null when it failed), `trade` (with its `validation` and the risk verdict applied), `risk_review` (null when there was no trade to review), `missing` (the reads that failed) and `sizing_basis`. Present on a completed run.",
+        "type": "object"
+      },
+      "disclosures": {
+        "type": "string"
+      },
+      "key_levels": {
+        "description": "Price levels from the read: support and resistance (technical), or a designed trade's entry, stop and target as share prices (quant). Present on a completed run.",
+        "items": {
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "price": {
+              "type": "number"
+            },
+            "timeframe": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": [
+                "support",
+                "resistance",
+                "entry",
+                "stop",
+                "target"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "price",
+            "type",
+            "label"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "report_url": {
+        "description": "A completed desk run's full report (`GET /api/v1/runs/{runID}/report`). Absent on other agents' runs.",
+        "type": "string"
+      },
+      "risks": {
+        "description": "What could go against the read; for the portfolio agents, the risk flags and the positions or findings of concern, led by a sentence naming any holdings the computed figures leave out (options, or holdings without enough price history). Present on a completed run.",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "run": {
+        "properties": {
+          "cache_hit": {
+            "type": "boolean"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cost_cents": {
+            "description": "The run's token cost at the published rates. Shown even while billing is off (it counts toward the free-mode monthly cap).",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "effort": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "submitted",
+              "working",
+              "completed",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "steps": {
+            "description": "A desk run's steps (technical, fundamental, macro, quant, trade_risk) in the order they started. Each step's cost_cents prices its tokens on the run's model at the current rates; the run bills once, for cost_cents above, so the steps' sum can differ from it by rounding.",
+            "items": {
+              "description": "One step of a desk run.",
+              "properties": {
+                "cache_hit": {
+                  "type": "boolean"
+                },
+                "cost_cents": {
+                  "type": "integer"
+                },
+                "duration_ms": {
+                  "type": "integer"
+                },
+                "error": {
+                  "description": "On a failed step, the kind of error.",
+                  "type": "string"
+                },
+                "name": {
+                  "enum": [
+                    "technical",
+                    "fundamental",
+                    "macro",
+                    "quant",
+                    "trade_risk"
+                  ],
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "working",
+                    "completed",
+                    "failed",
+                    "canceled",
+                    "skipped"
+                  ],
+                  "type": "string"
+                },
+                "usage": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "type": "integer"
+                    },
+                    "type": "object"
+                  },
+                  "description": "The step's tokens by model, then by kind.",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "name",
+                "status",
+                "cost_cents"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "description": "Tokens by model, then by kind (input_tokens, output_tokens, cached_tokens, reasoning_tokens).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "model",
+          "effort",
+          "created_at",
+          "cost_cents"
+        ],
+        "type": "object"
+      },
+      "schema_version": {
+        "type": "string"
+      },
+      "stance": {
+        "anyOf": [
+          {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status_detail": {
+        "description": "On a failed run, the reason (e.g. failed:expired, or failed:portfolio_unavailable when a portfolio run couldn't read the account's holdings or price the positions).",
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "schema_version",
+      "agent",
+      "run",
+      "disclosures"
+    ],
+    "type": "object"
+  },
+  "models": {
+    "claude-fable-5": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "claude-fable-5-1": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "claude-haiku-4-5": [
+      "low",
+      "medium"
+    ],
+    "claude-opus-4-6": [
+      "low",
+      "medium",
+      "high",
+      "max"
+    ],
+    "claude-opus-4-7": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "claude-opus-4-8": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "claude-opus-5-5": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "claude-sonnet-5": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "gpt-5.2": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "gpt-5.4": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "gpt-5.5": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "gpt-5.6": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "gpt-6-astra": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "gpt-6-luna": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "gpt-6.1-sol": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ]
+  }
+}

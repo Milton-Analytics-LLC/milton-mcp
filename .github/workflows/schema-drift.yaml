@@ -1,0 +1,15 @@
+name: Schema drift
+
+# Checks the bundled schemas.json against Milton's published OpenAPI spec and pricing.
+# A failure means Milton's API changed: run scripts/generate_schemas.py and release.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+      - run: uv run python scripts/generate_schemas.py --check
