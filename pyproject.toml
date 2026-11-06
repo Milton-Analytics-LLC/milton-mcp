@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "milton-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Milton's analyst agents: technical, fundamental, macro, trade design and the full desk, through Milton's API."
 readme = "README.md"
 license = "MIT"
@@ -20,7 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Office/Business :: Financial :: Investment",
 ]
-dependencies = ["mcp>=2.3,<3"]
+dependencies = ["mcp>=2.3,<3", "opentelemetry-api>=1.28"]
 
 [project.urls]
 Homepage = "https://withmilton.ai"
@@ -31,7 +31,7 @@ Source = "https://github.com/Milton-Analytics-LLC/milton-mcp"
 milton-mcp = "milton_mcp.__main__:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff==0.15.15", "pyyaml>=6"]
+dev = ["pytest>=8", "ruff==0.15.15", "pyyaml>=6", "opentelemetry-sdk>=1.28"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/milton_mcp"]

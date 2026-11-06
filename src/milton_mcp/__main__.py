@@ -9,6 +9,9 @@ import sys
 from typing import Any
 
 import anyio
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
 
 from milton_mcp import __version__
 from milton_mcp.client import MiltonClient
@@ -49,7 +52,7 @@ def main(argv: list[str] | None = None) -> None:
 async def serve_stdio(settings: Settings) -> None:
     from mcp.server.stdio import stdio_server
 
-    client = MiltonClient(settings.base_url)
+    client = MiltonClient.from_settings(settings)
     try:
         server = build_server(MiltonTools(settings, client, http_mode=False))
         async with stdio_server() as (read, write):
@@ -60,10 +63,20 @@ async def serve_stdio(settings: Settings) -> None:
 
 def http_app(settings: Settings, *, host: str = "127.0.0.1", path: str = "/mcp", client: MiltonClient | None = None):
     """The Streamable HTTP app: stateless, JSON responses, a bearer token required on every request."""
-    client = client or MiltonClient(settings.base_url)
+    client = client or MiltonClient.from_settings(settings)
     server = build_server(MiltonTools(settings, client, http_mode=True))
-    app = server.streamable_http_app(streamable_http_path=path, json_response=True, stateless_http=True, host=host)
+    app = server.streamable_http_app(
+        streamable_http_path=path,
+        json_response=True,
+        stateless_http=True,
+        host=host,
+        custom_starlette_routes=[Route("/healthz", _healthz, methods=["GET"])],
+    )
     return RequireBearer(app, path)
+
+
+async def _healthz(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("ok")
 
 
 def serve_http(settings: Settings, *, host: str, port: int, path: str) -> None:

@@ -73,7 +73,8 @@ least 70 seconds.
 | `MILTON_API_KEY` | Your API token (`mlt_…`). Required in stdio mode. |
 | `MILTON_DEFAULT_MODEL` | Optional. The model runs use when a call doesn't name one; `model` then becomes optional in the tool schemas. |
 | `MILTON_DEFAULT_EFFORT` | Optional. The reasoning effort runs use when a call doesn't name one. |
-| `MILTON_BASE_URL` | Optional. Defaults to `https://withmilton.ai`. |
+| `MILTON_BASE_URL` | Optional. Defaults to `https://withmilton.ai`. Links in results point here. |
+| `MILTON_API_URL` | Optional. Where API calls go, if not `MILTON_BASE_URL` (for example a hosted deployment reaching the api inside its own network). |
 
 ## Tools
 
@@ -120,7 +121,14 @@ milton-mcp --http --host 0.0.0.0 --port 8000      # endpoint: http://<host>:8000
 
 In HTTP mode the server holds no API token. Every request must carry the caller's token as
 `Authorization: Bearer mlt_…`, which is passed on to Milton; a request without one gets a 401. Put it
-behind TLS if it's reachable beyond your own network.
+behind TLS if it's reachable beyond your own network. `GET /healthz` answers 200 without a token, for
+load-balancer health checks.
+
+### Telemetry
+
+With an OpenTelemetry SDK configured (for example, run under `opentelemetry-instrument`), the server
+counts calls as `milton.mcp.calls` (labels `method`, `tool`, `outcome`) and passes the trace context on
+to Milton. Without one it records nothing.
 
 ## Development
 
