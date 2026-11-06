@@ -111,3 +111,21 @@ def test_bundled_schemas_have_no_openapi_leftovers():
     text = json.dumps(load_bundle())
     for leftover in ('"nullable"', '"$ref"', '"int64"', "portfolio_id"):
         assert leftover not in text
+
+
+def test_fetches_with_its_own_user_agent(monkeypatch):
+    # withmilton.ai's Cloudflare rules answer urllib's default "Python-urllib/x.y" with a 403.
+    import io
+    import urllib.request
+
+    from scripts import generate_schemas
+
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["user_agent"] = request.get_header("User-agent")
+        return io.BytesIO(b"spec")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert generate_schemas._load("https://withmilton.ai/api/v1/openapi.yaml") == "spec"
+    assert seen["user_agent"].startswith("milton-mcp-schema-generator")
