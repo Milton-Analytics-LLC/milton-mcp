@@ -5,6 +5,9 @@ one: "mcp:" + sha256 of the tool, its canonical arguments and a 10-minute window
 key to a run per user (the run id is derived from the user and the key), so a repeat under the same
 key returns the same run and is billed once.
 
+A failed run isn't billed and is no use to a caller asking again, so when an identical call gets
+a failed run back, the server starts a new one under retry_key(failed run).
+
 A re-send just after the window rolls over hashes to a new key, so each call also sends the previous
 window's key as Idempotency-Previous-Key, and Milton returns a run started under it for the same
 request. Nothing is remembered here, so this holds across restarts and replicas: an identical call
@@ -69,3 +72,9 @@ class IdempotencyKeys:
 
 def _key(canonical: str, window: int) -> str:
     return "mcp:" + hashlib.sha256(f"{canonical}|{window}".encode()).hexdigest()
+
+
+def retry_key(failed_run_id: str) -> str:
+    """The key for a fresh attempt after a failed run. It depends only on that run, so a re-sent
+    retry finds the same new run instead of starting another."""
+    return "mcp:retry:" + hashlib.sha256(failed_run_id.encode()).hexdigest()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from typing import Any
@@ -17,7 +18,7 @@ from milton_mcp.client import ApiError, MiltonClient
 from milton_mcp.config import Settings
 from milton_mcp.digest import run_result
 from milton_mcp.errors import api_error_result, error_result
-from milton_mcp.idempotency import IdempotencyKeys, canonical_arguments
+from milton_mcp.idempotency import IdempotencyKeys, canonical_arguments, retry_key
 from milton_mcp.telemetry import NO_TOOL, CallMetrics, outcome_for_status
 from milton_mcp.tools import AGENT_TOOLS_BY_NAME, GET_RUN, AgentTool, build_tools, load_bundle
 
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 # tools/list changes only when Milton adds a model or this package updates.
 _LIST_CACHE = CacheHint(ttl_ms=60 * 60 * 1000, scope="private")
+
+# Each earlier identical call that failed adds one hop; the bound only stops a runaway loop.
+_MAX_RETRIES_AFTER_FAILURE = 5
 
 
 class MiltonTools:
@@ -47,6 +51,7 @@ class MiltonTools:
         self.keys = keys or IdempotencyKeys()
         self.metrics = metrics or CallMetrics()
         self.bundle = bundle or load_bundle()
+        self._retry_heads: dict[tuple[bytes, str], str] = {}
         self._models: dict[str, list[str]] | None = None
 
     async def models(self) -> dict[str, list[str]]:
@@ -121,16 +126,39 @@ class MiltonTools:
 
         canonical = canonical_arguments(body, await self.models())
         keys = self.keys.keys_for(spec.name, canonical)
+        token_hash = hashlib.sha256(token.encode()).digest()
+        retry_parent = next(
+            (
+                self._retry_heads[identity]
+                for identity in ((token_hash, keys.current), (token_hash, keys.previous))
+                if identity in self._retry_heads
+            ),
+            None,
+        )
         waits = bool(self.bundle["agents"][spec.agent]["waits"])
         resp = await self.client.start_run(
             spec.agent,
             body,
             token=token,
-            idempotency_key=keys.current,
-            previous_idempotency_key=keys.previous,
+            idempotency_key=retry_key(retry_parent) if retry_parent else keys.current,
+            previous_idempotency_key=keys.previous if retry_parent is None else None,
             wait=waits,
             forward=forward,
         )
+        for _ in range(_MAX_RETRIES_AFTER_FAILURE):
+            run = resp.envelope.get("run") or {}
+            if not (resp.replayed and run.get("status") == "failed" and run.get("id")):
+                break
+            retry_parent = str(run["id"])
+            resp = await self.client.start_run(
+                spec.agent, body, token=token, idempotency_key=retry_key(retry_parent), wait=waits, forward=forward
+            )
+        run = resp.envelope.get("run") or {}
+        if run.get("status") == "failed" and run.get("id"):
+            retry_parent = str(run["id"])
+        if retry_parent is not None:
+            for key in (keys.current, keys.previous):
+                self._retry_heads[(token_hash, key)] = retry_parent
         result = run_result(
             resp.envelope, base_url=self.settings.base_url, inputs=canonical, replayed=resp.replayed, waited=waits
         )
