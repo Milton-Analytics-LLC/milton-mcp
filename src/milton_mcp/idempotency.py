@@ -6,7 +6,8 @@ key to a run per user (the run id is derived from the user and the key), so a re
 key returns the same run and is billed once.
 
 A failed run isn't billed and is no use to a caller asking again, so when an identical call gets
-a failed run back, the server starts a new one under retry_key(failed run).
+a failed run back, the server starts a new one: under this window's key when the failed run sits
+under the previous window's (so the next window's calls find it), else under retry_key(failed run).
 
 A re-send just after the window rolls over hashes to a new key, so each call also sends the previous
 window's key as Idempotency-Previous-Key, and Milton returns a run started under it for the same

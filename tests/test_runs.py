@@ -193,21 +193,19 @@ async def test_an_identical_call_after_a_failed_run_starts_a_new_run(make_server
     assert "isn't billed again" not in text(again)
 
 
-async def test_retry_chain_resumes_after_the_per_call_limit(make_server, fake: FakeMilton):
+async def test_every_identical_call_after_a_failure_tries_again_on_any_replica(make_server, fake: FakeMilton):
     fake.new_run_status = "failed"
     for _ in range(6):
         await call(make_server(keys=IdempotencyKeys(lambda: 10)), "milton_technical_analysis", TECHNICAL)
     assert fake.created == 6
 
-    server = make_server(keys=IdempotencyKeys(lambda: 10))
-    await call(server, "milton_technical_analysis", TECHNICAL)
-    assert fake.created == 6
-
     fake.new_run_status = "completed"
-    recovered = await call(server, "milton_technical_analysis", TECHNICAL)
+    recovered = await call(make_server(keys=IdempotencyKeys(lambda: 10)), "milton_technical_analysis", TECHNICAL)
+    again = await call(make_server(keys=IdempotencyKeys(lambda: 20)), "milton_technical_analysis", TECHNICAL)
 
     assert fake.created == 7
     assert recovered.is_error is False
+    assert again.structured_content["run"]["id"] == recovered.structured_content["run"]["id"]
 
 
 async def test_resending_after_the_retry_returns_the_retried_run(make_server, fake: FakeMilton):
@@ -236,6 +234,22 @@ async def test_retry_is_discoverable_after_a_window_rollover(make_server, fake: 
 
     now[0] = 2 * WINDOW_SECONDS + 1
     again = await call(server, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 2
+    assert again.structured_content["run"]["id"] == retried.structured_content["run"]["id"]
+    assert "isn't billed again" in text(again)
+
+
+async def test_a_retry_is_found_after_the_window_rolls_over_on_another_replica(make_server, fake: FakeMilton):
+    fake.new_run_status = "failed"
+    await call(make_server(keys=IdempotencyKeys(lambda: 10)), "milton_technical_analysis", TECHNICAL)
+    fake.new_run_status = "completed"
+    retried = await call(
+        make_server(keys=IdempotencyKeys(lambda: 2 * WINDOW_SECONDS - 10)), "milton_technical_analysis", TECHNICAL
+    )
+    again = await call(
+        make_server(keys=IdempotencyKeys(lambda: 2 * WINDOW_SECONDS + 10)), "milton_technical_analysis", TECHNICAL
+    )
 
     assert fake.created == 2
     assert again.structured_content["run"]["id"] == retried.structured_content["run"]["id"]
