@@ -71,21 +71,33 @@ def working_envelope(run_id: str, agent: str = "technical", status: str = "worki
 
 
 class FakeMilton:
-    """Keys runs by (token, Idempotency-Key) the way Milton does, so replays return the same run."""
+    """Keys runs by (token, Idempotency-Key) the way Milton does, so replays return the same run, and
+    honours Idempotency-Previous-Key for the same request body.
 
-    def __init__(self) -> None:
+    It answers only at api_url: a request anywhere else fails to connect and is recorded in
+    misdirected, which the fake fixture checks after every test.
+    """
+
+    def __init__(self, api_url: str = BASE_URL) -> None:
+        self.api_url = api_url
+        self.misdirected: list[str] = []
         self.requests: list[httpx2.Request] = []
         self.runs: dict[str, dict[str, Any]] = {}
         self.owners: dict[str, str] = {}
+        self.request_hashes: dict[str, str] = {}
         self.created = 0
         self.new_run_status = "completed"
         self.error: tuple[int, dict[str, Any], dict[str, str]] | None = None
         self.pricing_status = 200
 
     def transport(self) -> httpx2.MockTransport:
-        return httpx2.MockTransport(self.handle)
+        # Looked up per request, so a test can swap handle after the server is built.
+        return httpx2.MockTransport(lambda request: self.handle(request))
 
     def handle(self, request: httpx2.Request) -> httpx2.Response:
+        if not str(request.url).startswith(self.api_url.rstrip("/") + "/"):
+            self.misdirected.append(str(request.url))
+            raise httpx2.ConnectError(f"no Milton at {request.url}", request=request)
         self.requests.append(request)
         path = request.url.path
         if path == "/api/v1/pricing":
@@ -102,8 +114,13 @@ class FakeMilton:
 
         if request.method == "POST" and path.startswith("/api/v1/agents/") and path.endswith("/runs"):
             agent = path.split("/")[4]
-            key = request.headers["idempotency-key"]
-            run_id = str(uuid.uuid5(RUN_NAMESPACE, f"{token}|{key}"))
+            run_id = self.run_id(token, request.headers["idempotency-key"])
+            request_hash = json.dumps([agent, json.loads(request.content)], sort_keys=True)
+            previous = request.headers.get("idempotency-previous-key")
+            if run_id not in self.runs and previous:
+                prior = self.run_id(token, previous)
+                if self.request_hashes.get(prior) == request_hash:
+                    run_id = prior
             if run_id in self.runs:
                 return httpx2.Response(200, json=self.runs[run_id], headers={"Idempotent-Replayed": "true"})
             self.created += 1
@@ -113,6 +130,7 @@ class FakeMilton:
                 env = working_envelope(run_id, agent, self.new_run_status)
             self.runs[run_id] = env
             self.owners[run_id] = token
+            self.request_hashes[run_id] = request_hash
             return httpx2.Response(200 if self.new_run_status == "completed" else 202, json=env)
 
         if request.method == "GET" and path.startswith("/api/v1/runs/"):
@@ -122,6 +140,10 @@ class FakeMilton:
             return httpx2.Response(200, json=self.runs[run_id])
 
         return httpx2.Response(404, json={"error": "the requested resource could not be found"})
+
+    @staticmethod
+    def run_id(token: str, key: str) -> str:
+        return str(uuid.uuid5(RUN_NAMESPACE, f"{token}|{key}"))
 
     def add_run(self, envelope: dict[str, Any], token: str = API_KEY) -> None:
         run_id = envelope["run"]["id"]

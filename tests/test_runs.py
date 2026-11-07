@@ -5,6 +5,7 @@ import pytest
 from mcp import Client
 
 from milton_mcp.config import Settings
+from milton_mcp.idempotency import WINDOW_SECONDS, IdempotencyKeys
 from milton_mcp.tools import load_bundle
 from tests.fakes import API_KEY, BASE_URL, FakeMilton, completed_envelope, working_envelope
 
@@ -153,6 +154,28 @@ async def test_different_inputs_start_a_new_run(make_server, fake: FakeMilton):
     server = make_server()
     await call(server, "milton_technical_analysis", TECHNICAL)
     await call(server, "milton_technical_analysis", dict(TECHNICAL, horizon="position"))
+    assert fake.created == 2
+
+
+async def test_a_resend_across_the_window_boundary_on_another_replica_returns_the_same_run(
+    make_server, fake: FakeMilton
+):
+    replica_a = make_server(keys=IdempotencyKeys(lambda: WINDOW_SECONDS - 1))
+    replica_b = make_server(keys=IdempotencyKeys(lambda: WINDOW_SECONDS + 1))
+    first = await call(replica_a, "milton_technical_analysis", TECHNICAL)
+    again = await call(replica_b, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 1
+    assert again.structured_content["run"]["id"] == first.structured_content["run"]["id"]
+    assert "isn't billed again" in text(again)
+    first_post, again_post = fake.run_posts()
+    assert again_post.headers["idempotency-key"] != first_post.headers["idempotency-key"]
+    assert again_post.headers["idempotency-previous-key"] == first_post.headers["idempotency-key"]
+
+
+async def test_the_same_call_two_windows_later_starts_a_new_run(make_server, fake: FakeMilton):
+    await call(make_server(keys=IdempotencyKeys(lambda: 0)), "milton_technical_analysis", TECHNICAL)
+    await call(make_server(keys=IdempotencyKeys(lambda: 2 * WINDOW_SECONDS)), "milton_technical_analysis", TECHNICAL)
     assert fake.created == 2
 
 
