@@ -193,6 +193,23 @@ async def test_an_identical_call_after_a_failed_run_starts_a_new_run(make_server
     assert "isn't billed again" not in text(again)
 
 
+async def test_retry_chain_resumes_after_the_per_call_limit(make_server, fake: FakeMilton):
+    fake.new_run_status = "failed"
+    for _ in range(6):
+        await call(make_server(keys=IdempotencyKeys(lambda: 10)), "milton_technical_analysis", TECHNICAL)
+    assert fake.created == 6
+
+    server = make_server(keys=IdempotencyKeys(lambda: 10))
+    await call(server, "milton_technical_analysis", TECHNICAL)
+    assert fake.created == 6
+
+    fake.new_run_status = "completed"
+    recovered = await call(server, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 7
+    assert recovered.is_error is False
+
+
 async def test_resending_after_the_retry_returns_the_retried_run(make_server, fake: FakeMilton):
     replica_a = make_server(keys=IdempotencyKeys(lambda: 10))
     replica_b = make_server(keys=IdempotencyKeys(lambda: 20))

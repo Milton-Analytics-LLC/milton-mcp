@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from typing import Any
@@ -50,6 +51,7 @@ class MiltonTools:
         self.keys = keys or IdempotencyKeys()
         self.metrics = metrics or CallMetrics()
         self.bundle = bundle or load_bundle()
+        self._retry_heads: dict[tuple[bytes, str], str] = {}
         self._models: dict[str, list[str]] | None = None
 
     async def models(self) -> dict[str, list[str]]:
@@ -124,13 +126,15 @@ class MiltonTools:
 
         canonical = canonical_arguments(body, await self.models())
         keys = self.keys.keys_for(spec.name, canonical)
+        retry_identity = (hashlib.sha256(token.encode()).digest(), keys.current)
+        retry_parent = self._retry_heads.get(retry_identity)
         waits = bool(self.bundle["agents"][spec.agent]["waits"])
         resp = await self.client.start_run(
             spec.agent,
             body,
             token=token,
-            idempotency_key=keys.current,
-            previous_idempotency_key=keys.previous,
+            idempotency_key=retry_key(retry_parent) if retry_parent else keys.current,
+            previous_idempotency_key=keys.previous if retry_parent is None else None,
             wait=waits,
             forward=forward,
         )
@@ -138,9 +142,15 @@ class MiltonTools:
             run = resp.envelope.get("run") or {}
             if not (resp.replayed and run.get("status") == "failed" and run.get("id")):
                 break
+            retry_parent = str(run["id"])
             resp = await self.client.start_run(
-                spec.agent, body, token=token, idempotency_key=retry_key(str(run["id"])), wait=waits, forward=forward
+                spec.agent, body, token=token, idempotency_key=retry_key(retry_parent), wait=waits, forward=forward
             )
+        run = resp.envelope.get("run") or {}
+        if retry_parent is not None:
+            self._retry_heads[retry_identity] = retry_parent
+        if run.get("status") == "failed" and run.get("id"):
+            self._retry_heads[retry_identity] = str(run["id"])
         result = run_result(
             resp.envelope, base_url=self.settings.base_url, inputs=canonical, replayed=resp.replayed, waited=waits
         )
