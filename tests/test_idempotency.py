@@ -14,51 +14,37 @@ class Clock:
         return self.now
 
 
-def test_key_is_mcp_prefixed_sha256():
-    key = IdempotencyKeys(Clock(0)).key_for("caller", "milton_technical_analysis", ARGS)
-    assert key.startswith("mcp:")
-    assert len(key) == 4 + 64
+def keys_at(now: float, tool: str = "t", arguments=ARGS):
+    return IdempotencyKeys(Clock(now)).keys_for(tool, arguments)
 
 
-def test_same_call_in_the_window_gets_the_same_key():
-    keys = IdempotencyKeys(Clock(100))
-    assert keys.key_for("c", "t", ARGS) == keys.key_for("c", "t", dict(ARGS))
+def test_keys_are_mcp_prefixed_sha256():
+    keys = keys_at(0, "milton_technical_analysis")
+    for key in (keys.current, keys.previous):
+        assert key.startswith("mcp:")
+        assert len(key) == 4 + 64
+    assert keys.current != keys.previous
 
 
-def test_a_call_resent_across_the_window_boundary_keeps_its_key():
-    clock = Clock(WINDOW_SECONDS - 5)
-    keys = IdempotencyKeys(clock)
-    first = keys.key_for("c", "t", ARGS)
-    clock.now = WINDOW_SECONDS + 5
-    assert keys.key_for("c", "t", ARGS) == first
+def test_any_process_derives_the_same_keys_within_a_window():
+    assert keys_at(10) == keys_at(WINDOW_SECONDS - 1)
+    assert keys_at(10) == keys_at(10, arguments=dict(ARGS))
 
 
-def test_a_fresh_process_hashes_the_same_key_within_a_window():
-    assert IdempotencyKeys(Clock(10)).key_for("c", "t", ARGS) == IdempotencyKeys(Clock(500)).key_for("c", "t", ARGS)
+def test_the_previous_key_is_the_last_windows_key():
+    assert keys_at(WINDOW_SECONDS + 1).previous == keys_at(WINDOW_SECONDS - 1).current
 
 
-def test_after_the_window_a_call_gets_a_new_key():
-    clock = Clock(0)
-    keys = IdempotencyKeys(clock)
-    first = keys.key_for("c", "t", ARGS)
-    clock.now = WINDOW_SECONDS + 1
-    assert keys.key_for("c", "t", ARGS) != first
+def test_two_windows_later_neither_key_matches():
+    first = keys_at(WINDOW_SECONDS - 1).current
+    later = keys_at(2 * WINDOW_SECONDS + 1)
+    assert first not in (later.current, later.previous)
 
 
-def test_remembered_keys_are_per_caller():
-    clock = Clock(WINDOW_SECONDS - 5)
-    keys = IdempotencyKeys(clock)
-    a_first = keys.key_for("a", "t", ARGS)
-    clock.now = WINDOW_SECONDS + 5
-    assert keys.key_for("b", "t", ARGS) != a_first
-    assert keys.key_for("a", "t", ARGS) == a_first
-
-
-def test_tool_and_arguments_change_the_key():
-    keys = IdempotencyKeys(Clock(0))
-    base = keys.key_for("c", "t", ARGS)
-    assert keys.key_for("c", "other", ARGS) != base
-    assert keys.key_for("c", "t", dict(ARGS, horizon="position")) != base
+def test_tool_and_arguments_change_the_keys():
+    base = keys_at(0)
+    assert keys_at(0, "other") != base
+    assert keys_at(0, arguments=dict(ARGS, horizon="position")) != base
 
 
 def test_canonical_arguments_normalize_like_milton():

@@ -75,6 +75,7 @@ least 70 seconds.
 | `MILTON_DEFAULT_EFFORT` | Optional. The reasoning effort runs use when a call doesn't name one. |
 | `MILTON_BASE_URL` | Optional. Defaults to `https://withmilton.ai`. Links in results point here. |
 | `MILTON_API_URL` | Optional. Where API calls go, if not `MILTON_BASE_URL` (for example a hosted deployment reaching the api inside its own network). |
+| `MILTON_FORWARD_CLIENT_IP` | Optional, HTTP mode only. `true` passes each request's `CF-Connecting-IP` header on to Milton, so Milton's per-IP rate limits apply to your callers rather than to your server. Turn it on only if every request reaches the server through Cloudflare. Otherwise a caller could set the header and pick the IP those limits apply to. |
 
 ## Tools
 
@@ -101,8 +102,9 @@ A run that hasn't finished after 50 seconds comes back as a `run_id` instead; `m
 ### Repeated calls
 
 MCP clients sometimes re-send a call when a connection drops. An identical call (same tool and inputs)
-within 10 minutes returns the same run and isn't billed again. A call with any different input starts a
-new run.
+within 10 minutes returns the same run and isn't billed again, whichever server process handles it. Two
+identical calls 10 to 20 minutes apart may also share a run; after that, a call starts a new one. A call
+with any different input starts a new run.
 
 ## Cost
 

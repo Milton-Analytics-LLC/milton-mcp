@@ -17,7 +17,7 @@ TECHNICAL = {"ticker": "NVDA", "horizon": "swing", "model": "claude-opus-5-5"}
 
 def make_app(fake: FakeMilton, settings: Settings | None = None):
     settings = settings or Settings(base_url=BASE_URL)
-    return http_app(settings, client=MiltonClient(BASE_URL, transport=fake.transport()))
+    return http_app(settings, client=MiltonClient.from_settings(settings, transport=fake.transport()))
 
 
 async def test_no_bearer_is_401_with_a_challenge(fake: FakeMilton):

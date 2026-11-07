@@ -60,14 +60,18 @@ class MiltonClient:
         token: str,
         idempotency_key: str,
         wait: bool,
+        previous_idempotency_key: str | None = None,
         forward: Mapping[str, str] | None = None,
     ) -> RunResponse:
         params = {"wait": str(WAIT_SECONDS)} if wait else None
+        keys = {"Idempotency-Key": idempotency_key}
+        if previous_idempotency_key:
+            keys["Idempotency-Previous-Key"] = previous_idempotency_key
         resp = await self._http.post(
             f"/api/v1/agents/{agent}/runs",
             json=body,
             params=params,
-            headers=_headers(token, forward, {"Idempotency-Key": idempotency_key}),
+            headers=_headers(token, forward, keys),
         )
         envelope = _json_or_raise(resp)
         return RunResponse(envelope, replayed=resp.headers.get("Idempotent-Replayed") == "true")

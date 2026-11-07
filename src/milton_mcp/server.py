@@ -17,7 +17,7 @@ from milton_mcp.client import ApiError, MiltonClient
 from milton_mcp.config import Settings
 from milton_mcp.digest import run_result
 from milton_mcp.errors import api_error_result, error_result
-from milton_mcp.idempotency import IdempotencyKeys, caller_id, canonical_arguments
+from milton_mcp.idempotency import IdempotencyKeys, canonical_arguments
 from milton_mcp.telemetry import NO_TOOL, CallMetrics, outcome_for_status
 from milton_mcp.tools import AGENT_TOOLS_BY_NAME, GET_RUN, AgentTool, build_tools, load_bundle
 
@@ -120,10 +120,16 @@ class MiltonTools:
             body["effort"] = self.settings.default_effort
 
         canonical = canonical_arguments(body, await self.models())
-        key = self.keys.key_for(caller_id(token), spec.name, canonical)
+        keys = self.keys.keys_for(spec.name, canonical)
         waits = bool(self.bundle["agents"][spec.agent]["waits"])
         resp = await self.client.start_run(
-            spec.agent, body, token=token, idempotency_key=key, wait=waits, forward=forward
+            spec.agent,
+            body,
+            token=token,
+            idempotency_key=keys.current,
+            previous_idempotency_key=keys.previous,
+            wait=waits,
+            forward=forward,
         )
         result = run_result(
             resp.envelope, base_url=self.settings.base_url, inputs=canonical, replayed=resp.replayed, waited=waits
@@ -131,9 +137,9 @@ class MiltonTools:
         return result, _run_outcome(resp.envelope)
 
     def _forward(self, ctx: ServerRequestContext[Any]) -> dict[str, str]:
-        """Headers passed on to Milton: in HTTP mode, the caller's IP as Cloudflare reported it, so
-        Milton's per-IP limits apply to the caller rather than to this server."""
-        request = ctx.request if self.http_mode else None
+        """Headers passed on to Milton: when enabled in HTTP mode, the caller's IP as Cloudflare
+        reported it, so Milton's per-IP limits apply to the caller rather than to this server."""
+        request = ctx.request if self.http_mode and self.settings.forward_client_ip else None
         client_ip = request.headers.get("cf-connecting-ip", "").strip() if request is not None else ""
         return {"CF-Connecting-IP": client_ip} if client_ip else {}
 

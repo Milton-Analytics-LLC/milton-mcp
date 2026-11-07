@@ -15,8 +15,10 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-def fake() -> FakeMilton:
-    return FakeMilton()
+def fake():
+    fake = FakeMilton()
+    yield fake
+    assert not fake.misdirected, f"requests sent somewhere other than {fake.api_url}: {fake.misdirected}"
 
 
 @pytest.fixture
