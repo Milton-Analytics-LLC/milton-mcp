@@ -104,7 +104,8 @@ A run that hasn't finished after 50 seconds comes back as a `run_id` instead; `m
 MCP clients sometimes re-send a call when a connection drops. An identical call (same tool and inputs)
 within 10 minutes returns the same run and isn't billed again, whichever server process handles it. Two
 identical calls 10 to 20 minutes apart may also share a run; after that, a call starts a new one. A call
-with any different input starts a new run.
+with any different input starts a new run. If the earlier identical run failed, asking again starts a new
+run rather than returning the failure; failed runs aren't billed.
 
 ## Cost
 

@@ -173,6 +173,40 @@ async def test_a_resend_across_the_window_boundary_on_another_replica_returns_th
     assert again_post.headers["idempotency-previous-key"] == first_post.headers["idempotency-key"]
 
 
+async def test_a_failed_run_is_returned_as_is(make_server, fake: FakeMilton):
+    fake.new_run_status = "failed"
+    result = await call(make_server(), "milton_technical_analysis", TECHNICAL)
+    assert result.is_error is True
+    assert fake.created == 1
+
+
+async def test_an_identical_call_after_a_failed_run_starts_a_new_run(make_server, fake: FakeMilton):
+    server = make_server()
+    fake.new_run_status = "failed"
+    failed = await call(server, "milton_technical_analysis", TECHNICAL)
+    fake.new_run_status = "completed"
+    again = await call(server, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 2
+    assert again.is_error is False
+    assert again.structured_content["run"]["id"] != failed.structured_content["run"]["id"]
+    assert "isn't billed again" not in text(again)
+
+
+async def test_resending_after_the_retry_returns_the_retried_run(make_server, fake: FakeMilton):
+    replica_a = make_server(keys=IdempotencyKeys(lambda: 10))
+    replica_b = make_server(keys=IdempotencyKeys(lambda: 20))
+    fake.new_run_status = "failed"
+    await call(replica_a, "milton_technical_analysis", TECHNICAL)
+    fake.new_run_status = "completed"
+    retried = await call(replica_a, "milton_technical_analysis", TECHNICAL)
+    again = await call(replica_b, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 2
+    assert again.structured_content["run"]["id"] == retried.structured_content["run"]["id"]
+    assert "isn't billed again" in text(again)
+
+
 async def test_the_same_call_two_windows_later_starts_a_new_run(make_server, fake: FakeMilton):
     await call(make_server(keys=IdempotencyKeys(lambda: 0)), "milton_technical_analysis", TECHNICAL)
     await call(make_server(keys=IdempotencyKeys(lambda: 2 * WINDOW_SECONDS)), "milton_technical_analysis", TECHNICAL)

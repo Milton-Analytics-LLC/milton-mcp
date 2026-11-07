@@ -17,7 +17,7 @@ from milton_mcp.client import ApiError, MiltonClient
 from milton_mcp.config import Settings
 from milton_mcp.digest import run_result
 from milton_mcp.errors import api_error_result, error_result
-from milton_mcp.idempotency import IdempotencyKeys, canonical_arguments
+from milton_mcp.idempotency import IdempotencyKeys, canonical_arguments, retry_key
 from milton_mcp.telemetry import NO_TOOL, CallMetrics, outcome_for_status
 from milton_mcp.tools import AGENT_TOOLS_BY_NAME, GET_RUN, AgentTool, build_tools, load_bundle
 
@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 # tools/list changes only when Milton adds a model or this package updates.
 _LIST_CACHE = CacheHint(ttl_ms=60 * 60 * 1000, scope="private")
+
+# Each earlier identical call that failed adds one hop; the bound only stops a runaway loop.
+_MAX_RETRIES_AFTER_FAILURE = 5
 
 
 class MiltonTools:
@@ -131,6 +134,13 @@ class MiltonTools:
             wait=waits,
             forward=forward,
         )
+        for _ in range(_MAX_RETRIES_AFTER_FAILURE):
+            run = resp.envelope.get("run") or {}
+            if not (resp.replayed and run.get("status") == "failed" and run.get("id")):
+                break
+            resp = await self.client.start_run(
+                spec.agent, body, token=token, idempotency_key=retry_key(str(run["id"])), wait=waits, forward=forward
+            )
         result = run_result(
             resp.envelope, base_url=self.settings.base_url, inputs=canonical, replayed=resp.replayed, waited=waits
         )
