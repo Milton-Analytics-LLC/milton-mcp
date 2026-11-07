@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from typing import Any
@@ -50,7 +51,7 @@ class MiltonTools:
         self.keys = keys or IdempotencyKeys()
         self.metrics = metrics or CallMetrics()
         self.bundle = bundle or load_bundle()
-        self._retry_heads: dict[str, str] = {}
+        self._retry_heads: dict[tuple[bytes, str], str] = {}
         self._models: dict[str, list[str]] | None = None
 
     async def models(self) -> dict[str, list[str]]:
@@ -125,27 +126,25 @@ class MiltonTools:
 
         canonical = canonical_arguments(body, await self.models())
         keys = self.keys.keys_for(spec.name, canonical)
+        token_hash = hashlib.sha256(token.encode()).digest()
+        retry_parent = next(
+            (
+                self._retry_heads[identity]
+                for identity in ((token_hash, keys.current), (token_hash, keys.previous))
+                if identity in self._retry_heads
+            ),
+            None,
+        )
         waits = bool(self.bundle["agents"][spec.agent]["waits"])
         resp = await self.client.start_run(
             spec.agent,
             body,
             token=token,
-            idempotency_key=keys.current,
-            previous_idempotency_key=keys.previous,
+            idempotency_key=retry_key(retry_parent) if retry_parent else keys.current,
+            previous_idempotency_key=keys.previous if retry_parent is None else None,
             wait=waits,
             forward=forward,
         )
-        original_run = resp.envelope.get("run") or {}
-        original_run_id = (
-            str(original_run["id"])
-            if resp.replayed and original_run.get("status") == "failed" and original_run.get("id")
-            else None
-        )
-        retry_parent = self._retry_heads.get(original_run_id) if original_run_id else None
-        if retry_parent is not None:
-            resp = await self.client.start_run(
-                spec.agent, body, token=token, idempotency_key=retry_key(retry_parent), wait=waits, forward=forward
-            )
         for _ in range(_MAX_RETRIES_AFTER_FAILURE):
             run = resp.envelope.get("run") or {}
             if not (resp.replayed and run.get("status") == "failed" and run.get("id")):
@@ -155,13 +154,11 @@ class MiltonTools:
                 spec.agent, body, token=token, idempotency_key=retry_key(retry_parent), wait=waits, forward=forward
             )
         run = resp.envelope.get("run") or {}
-        if original_run_id is not None:
-            if retry_parent is not None:
-                self._retry_heads[original_run_id] = retry_parent
-            if run.get("status") == "failed" and run.get("id"):
-                self._retry_heads[original_run_id] = str(run["id"])
-        elif run.get("status") == "failed" and run.get("id"):
-            self._retry_heads[str(run["id"])] = str(run["id"])
+        if run.get("status") == "failed" and run.get("id"):
+            retry_parent = str(run["id"])
+        if retry_parent is not None:
+            for key in (keys.current, keys.previous):
+                self._retry_heads[(token_hash, key)] = retry_parent
         result = run_result(
             resp.envelope, base_url=self.settings.base_url, inputs=canonical, replayed=resp.replayed, waited=waits
         )

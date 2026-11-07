@@ -224,6 +224,24 @@ async def test_resending_after_the_retry_returns_the_retried_run(make_server, fa
     assert "isn't billed again" in text(again)
 
 
+async def test_retry_is_discoverable_after_a_window_rollover(make_server, fake: FakeMilton):
+    now = [WINDOW_SECONDS - 10]
+    server = make_server(keys=IdempotencyKeys(lambda: now[0]))
+    fake.new_run_status = "failed"
+    await call(server, "milton_technical_analysis", TECHNICAL)
+
+    now[0] += 20
+    fake.new_run_status = "completed"
+    retried = await call(server, "milton_technical_analysis", TECHNICAL)
+
+    now[0] = 2 * WINDOW_SECONDS + 1
+    again = await call(server, "milton_technical_analysis", TECHNICAL)
+
+    assert fake.created == 2
+    assert again.structured_content["run"]["id"] == retried.structured_content["run"]["id"]
+    assert "isn't billed again" in text(again)
+
+
 async def test_the_same_call_two_windows_later_starts_a_new_run(make_server, fake: FakeMilton):
     await call(make_server(keys=IdempotencyKeys(lambda: 0)), "milton_technical_analysis", TECHNICAL)
     await call(make_server(keys=IdempotencyKeys(lambda: 2 * WINDOW_SECONDS)), "milton_technical_analysis", TECHNICAL)
