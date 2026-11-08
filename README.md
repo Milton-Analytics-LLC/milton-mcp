@@ -23,6 +23,14 @@ Or with pip: `pip install milton-mcp`.
 Sign in at [withmilton.ai](https://withmilton.ai), open **Settings → API tokens** and create one. It starts
 with `mlt_`. Treat it like a password: it can start runs that bill to your balance.
 
+## Claude.ai and ChatGPT
+
+Milton hosts this server at `https://withmilton.ai/api/mcp`. In Claude.ai (**Settings → Connectors →
+Add custom connector**) or ChatGPT (**add a custom MCP server**), enter that URL; no API token is
+needed. You sign in to Milton, then choose the model and effort the connection uses. Every run from the
+app uses them; to change them, disconnect the app in Milton (**Settings → Connected apps**) and connect
+it again.
+
 ## Configure your client
 
 ### Claude Code
@@ -75,6 +83,7 @@ least 70 seconds.
 | `MILTON_DEFAULT_EFFORT` | Optional. The reasoning effort runs use when a call doesn't name one. |
 | `MILTON_BASE_URL` | Optional. Defaults to `https://withmilton.ai`. Links in results point here. |
 | `MILTON_API_URL` | Optional. Where API calls go, if not `MILTON_BASE_URL` (for example a hosted deployment reaching the api inside its own network). |
+| `MILTON_RESOURCE_METADATA_URL` | Optional, HTTP mode only. The URL of the endpoint's OAuth protected-resource metadata. When set, a 401 carries `WWW-Authenticate: Bearer resource_metadata="…", scope="agents"`, which is how OAuth clients such as Claude.ai and ChatGPT connectors find Milton's sign-in. Milton's hosted server sets it; a self-hosted server serving API tokens doesn't need it. |
 | `MILTON_FORWARD_CLIENT_IP` | Optional, HTTP mode only. `true` passes each request's `CF-Connecting-IP` header on to Milton, so Milton's per-IP rate limits apply to your callers rather than to your server. Turn it on only if every request reaches the server through Cloudflare. Otherwise a caller could set the header and pick the IP those limits apply to. |
 
 ## Tools
@@ -123,8 +132,9 @@ milton-mcp --http --host 0.0.0.0 --port 8000      # endpoint: http://<host>:8000
 ```
 
 In HTTP mode the server holds no API token. Every request must carry the caller's token as
-`Authorization: Bearer mlt_…`, which is passed on to Milton; a request without one gets a 401. Put it
-behind TLS if it's reachable beyond your own network. `GET /healthz` answers 200 without a token, for
+`Authorization: Bearer mlt_…`, which is passed on to Milton. A request without one gets a 401, and so
+does a call whose token Milton rejects (expired, revoked or disconnected), so OAuth clients refresh or
+sign in again. Put it behind TLS if it's reachable beyond your own network. `GET /healthz` answers 200 without a token, for
 load-balancer health checks.
 
 ### Telemetry

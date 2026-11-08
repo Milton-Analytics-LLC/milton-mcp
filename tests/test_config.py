@@ -42,3 +42,9 @@ def test_client_ip_forwarding_is_off_by_default():
 )
 def test_client_ip_forwarding_from_env(value: str, expected: bool):
     assert settings_from_env({"MILTON_FORWARD_CLIENT_IP": value}).forward_client_ip is expected
+
+
+def test_resource_metadata_url_is_unset_by_default():
+    assert settings_from_env({}).resource_metadata_url is None
+    url = "https://withmilton.ai/.well-known/oauth-protected-resource/api/mcp"
+    assert settings_from_env({"MILTON_RESOURCE_METADATA_URL": f" {url} "}).resource_metadata_url == url
