@@ -18,6 +18,10 @@ class Settings:
     forward_client_ip passes the caller's CF-Connecting-IP on to Milton in HTTP mode. Turn it on only
     when every request reaches this server through Cloudflare, which sets that header; otherwise a
     caller could pick the IP Milton's per-IP limits apply to.
+
+    resource_metadata_url, in HTTP mode, goes in the 401 challenge so OAuth clients (Claude.ai and
+    ChatGPT connectors) can find Milton's authorization server. Set it where Milton's OAuth server
+    serves this endpoint's protected-resource metadata.
     """
 
     base_url: str = DEFAULT_BASE_URL
@@ -26,6 +30,7 @@ class Settings:
     default_model: str | None = None
     default_effort: str | None = None
     forward_client_ip: bool = False
+    resource_metadata_url: str | None = None
 
     def __post_init__(self) -> None:
         if not self.api_url:
@@ -47,4 +52,5 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         default_model=get("MILTON_DEFAULT_MODEL"),
         default_effort=get("MILTON_DEFAULT_EFFORT"),
         forward_client_ip=(get("MILTON_FORWARD_CLIENT_IP") or "").lower() in ("1", "true", "yes"),
+        resource_metadata_url=get("MILTON_RESOURCE_METADATA_URL"),
     )

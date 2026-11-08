@@ -14,6 +14,7 @@ from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
 from milton_mcp import __version__
+from milton_mcp.auth import _token_rejected, challenge
 from milton_mcp.client import MiltonClient
 from milton_mcp.config import Settings, settings_from_env
 from milton_mcp.server import MiltonTools, build_server
@@ -72,7 +73,7 @@ def http_app(settings: Settings, *, host: str = "127.0.0.1", path: str = "/mcp",
         host=host,
         custom_starlette_routes=[Route("/healthz", _healthz, methods=["GET"])],
     )
-    return RequireBearer(app, path)
+    return RequireBearer(app, path, challenge(settings.resource_metadata_url))
 
 
 async def _healthz(request: Request) -> PlainTextResponse:
@@ -86,30 +87,57 @@ def serve_http(settings: Settings, *, host: str, port: int, path: str) -> None:
 
 
 class RequireBearer:
-    """Answers a request to the MCP endpoint without a bearer token with 401, before MCP sees it.
-    The server holds no key; the token is passed on to Milton, which checks it."""
+    """Answers 401 on the MCP endpoint when a request has no bearer token, before MCP sees it, and
+    when Milton rejects the token a tool call passed on. The server holds no key; Milton checks
+    the token. A 401 rather than an error result is what makes an OAuth client refresh its token
+    or ask the user to connect again."""
 
-    def __init__(self, app: Any, path: str) -> None:
+    def __init__(self, app: Any, path: str, www_authenticate: bytes = b"Bearer") -> None:
         self.app = app
         self.path = path.rstrip("/") or "/"
+        self.www_authenticate = www_authenticate
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        if scope["type"] == "http" and scope["path"].rstrip("/") == self.path.rstrip("/") and not _has_bearer(scope):
-            body = json.dumps({"error": "a Milton API token is required as the Authorization bearer"}).encode()
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 401,
-                    "headers": [
-                        (b"content-type", b"application/json"),
-                        (b"www-authenticate", b"Bearer"),
-                        (b"content-length", str(len(body)).encode()),
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": body})
+        if scope["type"] != "http" or scope["path"].rstrip("/") != self.path.rstrip("/"):
+            await self.app(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        if not _has_bearer(scope):
+            await self._unauthorized(send, "a Milton API token is required as the Authorization bearer")
+            return
+
+        rejected: list[bool] = []
+        replaced = False
+
+        async def send_or_challenge(message: dict[str, Any]) -> None:
+            nonlocal replaced
+            # JSON responses start only after the tool call has finished, so the flag is final here.
+            if message["type"] == "http.response.start" and rejected:
+                replaced = True
+                await self._unauthorized(send, "Milton rejected the bearer token (expired, revoked or disconnected)")
+                return
+            if not replaced:
+                await send(message)
+
+        reset = _token_rejected.set(rejected)
+        try:
+            await self.app(scope, receive, send_or_challenge)
+        finally:
+            _token_rejected.reset(reset)
+
+    async def _unauthorized(self, send: Any, error: str) -> None:
+        body = json.dumps({"error": error}).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", self.www_authenticate),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
 
 
 def _has_bearer(scope: dict[str, Any]) -> bool:

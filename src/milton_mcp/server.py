@@ -13,6 +13,7 @@ from mcp.server.lowlevel import Server
 from mcp_types import CallToolRequestParams, CallToolResult, ListToolsResult, PaginatedRequestParams, Tool
 
 from milton_mcp import __version__
+from milton_mcp.auth import is_connector_token, note_token_rejected
 from milton_mcp.client import ApiError, MiltonClient, RunResponse
 from milton_mcp.config import Settings
 from milton_mcp.digest import run_result
@@ -67,13 +68,13 @@ class MiltonTools:
                 return dict(self.bundle["models"])
         return self._models
 
-    async def tools(self) -> list[Tool]:
-        return build_tools(self.bundle, await self.models(), self.settings)
+    async def tools(self, *, connector: bool = False) -> list[Tool]:
+        return build_tools(self.bundle, await self.models(), self.settings, connector=connector)
 
     async def list_tools(
         self, ctx: ServerRequestContext[Any], params: PaginatedRequestParams | None
     ) -> ListToolsResult:
-        result = ListToolsResult(tools=await self.tools())
+        result = ListToolsResult(tools=await self.tools(connector=is_connector_token(self._token(ctx))))
         self.metrics.record("tools/list", NO_TOOL, "ok")
         return result
 
@@ -106,6 +107,8 @@ class MiltonTools:
                 return error_result(f"Unknown tool: {params.name}."), "invalid_input"
             return await self._start_run(spec, arguments, token, forward)
         except ApiError as err:
+            if err.status == 401 and self.http_mode:
+                note_token_rejected()
             result = api_error_result(err, base_url=self.settings.base_url, http_mode=self.http_mode, run_id=run_id)
             return result, outcome_for_status(err.status)
         except httpx2.HTTPError as exc:
@@ -118,10 +121,15 @@ class MiltonTools:
         self, spec: AgentTool, arguments: dict[str, Any], token: str, forward: dict[str, str]
     ) -> tuple[CallToolResult, str]:
         body = {name: value for name, value in arguments.items() if value is not None}
-        if "model" not in body and self.settings.default_model:
-            body["model"] = self.settings.default_model
-        if "effort" not in body and self.settings.default_effort:
-            body["effort"] = self.settings.default_effort
+        if is_connector_token(token):
+            # Milton runs a connector's calls on the model and effort chosen when connecting.
+            body.pop("model", None)
+            body.pop("effort", None)
+        else:
+            if "model" not in body and self.settings.default_model:
+                body["model"] = self.settings.default_model
+            if "effort" not in body and self.settings.default_effort:
+                body["effort"] = self.settings.default_effort
 
         canonical = canonical_arguments(body, await self.models())
         keys = self.keys.keys_for(spec.name, canonical)

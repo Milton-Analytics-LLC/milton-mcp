@@ -12,6 +12,7 @@ import httpx2
 BASE_URL = "https://milton.test"
 API_KEY = "mlt_" + "a" * 52
 OTHER_KEY = "mlt_" + "b" * 52
+CONNECTOR_KEY = "mlo_" + "C" * 52
 RUN_NAMESPACE = uuid.UUID("a7c9e4d2-1f3b-4e8a-9c6d-2b5f8e1a0d47")
 
 MODELS = {
@@ -89,6 +90,7 @@ class FakeMilton:
         self.new_run_status = "completed"
         self.error: tuple[int, dict[str, Any], dict[str, str]] | None = None
         self.pricing_status = 200
+        self.revoked: set[str] = set()
 
     def transport(self) -> httpx2.MockTransport:
         # Looked up per request, so a test can swap handle after the server is built.
@@ -106,7 +108,7 @@ class FakeMilton:
             return httpx2.Response(200, json={"rates": [], "efforts": MODELS})
 
         token = request.headers.get("authorization", "").removeprefix("Bearer ")
-        if token not in (API_KEY, OTHER_KEY):
+        if token not in (API_KEY, OTHER_KEY, CONNECTOR_KEY) or token in self.revoked:
             return httpx2.Response(401, json={"error": "invalid or missing authentication token"})
         if self.error is not None:
             status, body, headers = self.error

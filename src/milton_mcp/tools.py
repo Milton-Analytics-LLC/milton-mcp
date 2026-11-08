@@ -85,9 +85,14 @@ def load_bundle() -> dict[str, Any]:
     return json.loads(resources.files("milton_mcp").joinpath("schemas.json").read_text())
 
 
-def build_tools(bundle: dict[str, Any], models: dict[str, list[str]], settings: Settings) -> list[Tool]:
+def build_tools(
+    bundle: dict[str, Any], models: dict[str, list[str]], settings: Settings, *, connector: bool = False
+) -> list[Tool]:
     envelope = bundle["envelope_schema"]
-    tools = [_agent_tool(spec, bundle["agents"][spec.agent], models, settings, envelope) for spec in AGENT_TOOLS]
+    tools = [
+        _agent_tool(spec, bundle["agents"][spec.agent], models, settings, envelope, connector=connector)
+        for spec in AGENT_TOOLS
+    ]
     tools.append(
         Tool(
             name=GET_RUN,
@@ -119,23 +124,26 @@ def _agent_tool(
     models: dict[str, list[str]],
     settings: Settings,
     envelope: dict[str, Any],
+    *,
+    connector: bool = False,
 ) -> Tool:
     schema = copy.deepcopy(agent["input_schema"])
     props = schema.setdefault("properties", {})
     required = list(schema.get("required", []))
 
-    model_prop: dict[str, Any] = {
-        "type": "string",
-        "enum": sorted(models),
-        "description": "The model the run uses; its token rates set the cost.",
-    }
-    if settings.default_model:
-        model_prop["default"] = settings.default_model
-        model_prop["description"] += f" Defaults to {settings.default_model}."
-    else:
-        required.append("model")
-    props["model"] = model_prop
-    props["effort"] = _effort_property(models, settings.default_effort)
+    if not connector:
+        model_prop: dict[str, Any] = {
+            "type": "string",
+            "enum": sorted(models),
+            "description": "The model the run uses; its token rates set the cost.",
+        }
+        if settings.default_model:
+            model_prop["default"] = settings.default_model
+            model_prop["description"] += f" Defaults to {settings.default_model}."
+        else:
+            required.append("model")
+        props["model"] = model_prop
+        props["effort"] = _effort_property(models, settings.default_effort)
     schema["required"] = sorted(required)
 
     if agent["waits"]:
@@ -149,8 +157,9 @@ def _agent_tool(
             "A desk run takes several minutes, so this returns its run_id at once; milton_get_run "
             "returns the result, with a link to the full report, once it completes."
         )
+    model = "the model chosen when Milton was connected" if connector else "the chosen model"
     billing = (
-        "The run's tokens (every analyst's, for desk) bill to your Milton balance at the chosen model's "
+        f"The run's tokens (every analyst's, for desk) bill to your Milton balance at {model}'s "
         f"rates ({settings.base_url}/api/v1/pricing)."
     )
     return Tool(
