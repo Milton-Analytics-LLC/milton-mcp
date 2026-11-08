@@ -14,12 +14,14 @@ def is_connector_token(token: str | None) -> bool:
     return bool(token) and token.startswith(CONNECTOR_TOKEN_PREFIX)
 
 
-def challenge(resource_metadata_url: str | None) -> bytes:
+def challenge(resource_metadata_url: str | None, *, rejected: bool = False) -> bytes:
     """The WWW-Authenticate value: with a protected-resource metadata URL, clients can discover
-    Milton's OAuth server from it (RFC 9728) and ask for the agents scope."""
-    if not resource_metadata_url:
-        return b"Bearer"
-    return f'Bearer resource_metadata="{resource_metadata_url}", scope="{SCOPE}"'.encode()
+    Milton's OAuth server from it (RFC 9728) and ask for the agents scope. A token Milton rejected
+    is marked invalid_token; a request with no token carries no error code (RFC 6750 §3.1)."""
+    params = ['error="invalid_token"'] if rejected else []
+    if resource_metadata_url:
+        params += [f'resource_metadata="{resource_metadata_url}"', f'scope="{SCOPE}"']
+    return ("Bearer " + ", ".join(params)).strip().encode()
 
 
 # Set per HTTP request by the bearer guard; a tool call appends to it when Milton rejects the

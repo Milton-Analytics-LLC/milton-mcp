@@ -19,6 +19,7 @@ pytestmark = pytest.mark.anyio
 
 METADATA_URL = f"{BASE_URL}/.well-known/oauth-protected-resource/api/mcp"
 CHALLENGE = f'Bearer resource_metadata="{METADATA_URL}", scope="agents"'
+REJECTED = f'Bearer error="invalid_token", resource_metadata="{METADATA_URL}", scope="agents"'
 HOSTED = Settings(base_url=BASE_URL, resource_metadata_url=METADATA_URL)
 
 
@@ -54,11 +55,11 @@ async def test_the_401_challenge_points_at_the_protected_resource_metadata(fake:
     assert not fake.requests
 
 
-async def test_a_token_milton_rejects_is_an_http_401_with_the_challenge(fake: FakeMilton):
+async def test_a_token_milton_rejects_is_an_http_401_marked_invalid_token(fake: FakeMilton):
     fake.revoked.add(CONNECTOR_KEY)
     resp = await post_rpc(fake, CONNECTOR_KEY, technical_call({"ticker": "NVDA", "horizon": "swing"}))
     assert resp.status_code == 401
-    assert resp.headers["www-authenticate"] == CHALLENGE
+    assert resp.headers["www-authenticate"] == REJECTED
     assert "rejected" in resp.json()["error"]
     assert fake.run_posts(), "the token was tried against Milton first"
 
@@ -76,7 +77,7 @@ async def test_other_api_errors_stay_tool_results(fake: FakeMilton):
     assert resp.json()["result"]["isError"] is True
 
 
-async def test_without_metadata_the_rejection_401_is_a_plain_challenge(fake: FakeMilton):
+async def test_without_metadata_the_rejection_401_still_says_invalid_token(fake: FakeMilton):
     fake.revoked.add(API_KEY)
     resp = await post_rpc(
         fake,
@@ -85,7 +86,7 @@ async def test_without_metadata_the_rejection_401_is_a_plain_challenge(fake: Fak
         Settings(base_url=BASE_URL),
     )
     assert resp.status_code == 401
-    assert resp.headers["www-authenticate"] == "Bearer"
+    assert resp.headers["www-authenticate"] == 'Bearer error="invalid_token"'
 
 
 async def connected(fake: FakeMilton, token: str, settings: Settings = HOSTED, arguments: dict[str, Any] | None = None):
@@ -141,3 +142,29 @@ async def test_a_connector_call_never_sends_model_or_effort(fake: FakeMilton):
     body = FakeMilton.body(post)
     assert "model" not in body and "effort" not in body
     assert body["ticker"] == "NVDA"
+
+
+def test_only_a_rejected_token_carries_an_error_code():
+    from milton_mcp.auth import challenge
+
+    assert challenge(None) == b"Bearer"
+    assert b"error" not in challenge(METADATA_URL)
+    assert challenge(METADATA_URL, rejected=True).startswith(b'Bearer error="invalid_token", ')
+
+
+async def test_connector_descriptions_list_only_the_inputs_their_schemas_have(fake: FakeMilton):
+    tools, _ = await connected(fake, CONNECTOR_KEY)
+    assert "Inputs: ticker and horizon." in tools["milton_technical_analysis"].description
+    assert "Inputs: ticker." in tools["milton_fundamental_analysis"].description
+    assert "Takes no inputs." in tools["milton_macro_analysis"].description
+    for name, tool in tools.items():
+        assert "optional effort" not in (tool.description or ""), name
+
+
+async def test_api_token_descriptions_still_name_model_and_effort(fake: FakeMilton):
+    tools, _ = await connected(
+        fake, API_KEY, arguments={"ticker": "NVDA", "horizon": "swing", "model": "claude-opus-5-5"}
+    )
+    technical = tools["milton_technical_analysis"].description
+    assert "Inputs: ticker, horizon, model and an optional effort." in technical
+    assert "Inputs: model and an optional effort; no ticker." in tools["milton_macro_analysis"].description

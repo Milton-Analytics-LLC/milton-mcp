@@ -73,7 +73,7 @@ def http_app(settings: Settings, *, host: str = "127.0.0.1", path: str = "/mcp",
         host=host,
         custom_starlette_routes=[Route("/healthz", _healthz, methods=["GET"])],
     )
-    return RequireBearer(app, path, challenge(settings.resource_metadata_url))
+    return RequireBearer(app, path, settings.resource_metadata_url)
 
 
 async def _healthz(request: Request) -> PlainTextResponse:
@@ -92,17 +92,20 @@ class RequireBearer:
     the token. A 401 rather than an error result is what makes an OAuth client refresh its token
     or ask the user to connect again."""
 
-    def __init__(self, app: Any, path: str, www_authenticate: bytes = b"Bearer") -> None:
+    def __init__(self, app: Any, path: str, resource_metadata_url: str | None = None) -> None:
         self.app = app
         self.path = path.rstrip("/") or "/"
-        self.www_authenticate = www_authenticate
+        self.missing_challenge = challenge(resource_metadata_url)
+        self.rejected_challenge = challenge(resource_metadata_url, rejected=True)
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http" or scope["path"].rstrip("/") != self.path.rstrip("/"):
             await self.app(scope, receive, send)
             return
         if not _has_bearer(scope):
-            await self._unauthorized(send, "a Milton API token is required as the Authorization bearer")
+            await self._unauthorized(
+                send, self.missing_challenge, "a Milton API token is required as the Authorization bearer"
+            )
             return
 
         rejected: list[bool] = []
@@ -113,7 +116,9 @@ class RequireBearer:
             # JSON responses start only after the tool call has finished, so the flag is final here.
             if message["type"] == "http.response.start" and rejected:
                 replaced = True
-                await self._unauthorized(send, "Milton rejected the bearer token (expired, revoked or disconnected)")
+                await self._unauthorized(
+                    send, self.rejected_challenge, "Milton rejected the bearer token (expired, revoked or disconnected)"
+                )
                 return
             if not replaced:
                 await send(message)
@@ -124,7 +129,7 @@ class RequireBearer:
         finally:
             _token_rejected.reset(reset)
 
-    async def _unauthorized(self, send: Any, error: str) -> None:
+    async def _unauthorized(self, send: Any, www_authenticate: bytes, error: str) -> None:
         body = json.dumps({"error": error}).encode()
         await send(
             {
@@ -132,7 +137,7 @@ class RequireBearer:
                 "status": 401,
                 "headers": [
                     (b"content-type", b"application/json"),
-                    (b"www-authenticate", self.www_authenticate),
+                    (b"www-authenticate", www_authenticate),
                     (b"content-length", str(len(body)).encode()),
                 ],
             }

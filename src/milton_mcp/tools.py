@@ -28,6 +28,7 @@ class AgentTool:
     agent: str
     title: str
     about: str
+    inputs: tuple[str, ...]
 
 
 AGENT_TOOLS = (
@@ -38,7 +39,8 @@ AGENT_TOOLS = (
         "Runs Milton's technical analyst on one US stock or ETF: a multi-timeframe read with directional "
         "bias and conviction, support and resistance levels, and volatility posture, for an intraday, "
         "swing, position or long-term horizon. Use it for a chart-based view of a stock and the price "
-        "levels that matter. Inputs: ticker, horizon, model and an optional effort.",
+        "levels that matter.",
+        ("ticker", "horizon"),
     ),
     AgentTool(
         "milton_fundamental_analysis",
@@ -46,8 +48,8 @@ AGENT_TOOLS = (
         "Fundamental analysis",
         "Runs Milton's fundamental analyst on one US stock or ETF, from its filings, financials and news: "
         "directional bias, valuation against its history and peers, business quality and moat, the key "
-        "drivers and the risks to watch. Use it for the business and financial picture behind a stock. "
-        "Inputs: ticker, model and an optional effort.",
+        "drivers and the risks to watch. Use it for the business and financial picture behind a stock.",
+        ("ticker",),
     ),
     AgentTool(
         "milton_macro_analysis",
@@ -56,7 +58,8 @@ AGENT_TOOLS = (
         "Runs Milton's macro analyst: a market-wide read for US stocks covering the risk-on or risk-off "
         "regime, directional bias, entry-timing guidance, scheduled event risks (Fed meetings, inflation "
         "and jobs reports, ECB and Bank of Japan decisions) and market breadth. Use it for the market "
-        "backdrop rather than one company. Inputs: model and an optional effort; no ticker.",
+        "backdrop rather than one company.",
+        (),
     ),
     AgentTool(
         "milton_quant_analysis",
@@ -65,7 +68,8 @@ AGENT_TOOLS = (
         "Runs Milton's trade designer on one US stock or ETF: one trade (options or shares) with its legs, "
         "size against a hypothetical $100,000 portfolio, entry, exit rules and risk box, checked by "
         "Milton's trade validator. It can conclude that no trade is worth taking. Use it for a concrete, "
-        "risk-checked trade idea. Inputs: ticker, horizon, model and an optional effort.",
+        "risk-checked trade idea.",
+        ("ticker", "horizon"),
     ),
     AgentTool(
         "milton_desk",
@@ -74,8 +78,8 @@ AGENT_TOOLS = (
         "Runs Milton's full desk on one US stock or ETF: the macro, fundamental and technical analysts in "
         "parallel, then a trade designed on their reads, checked by Milton's trade validator and reviewed "
         "by its risk analyst, whose approve, resize or reject verdict binds. The trade is sized against a "
-        "hypothetical $100,000 portfolio. Use it for the complete process on one ticker. Inputs: ticker, "
-        "horizon, model and an optional effort.",
+        "hypothetical $100,000 portfolio. Use it for the complete process on one ticker.",
+        ("ticker", "horizon"),
     ),
 )
 AGENT_TOOLS_BY_NAME = {tool.name: tool for tool in AGENT_TOOLS}
@@ -165,11 +169,19 @@ def _agent_tool(
     return Tool(
         name=spec.name,
         title=spec.title,
-        description=f"{spec.about} {returns} {billing}",
+        description=f"{spec.about} {_inputs_sentence(spec.inputs, connector)} {returns} {billing}",
         input_schema=schema,
         output_schema=envelope,
         annotations=ToolAnnotations(title=spec.title, read_only_hint=True),
     )
+
+
+def _inputs_sentence(fields: tuple[str, ...], connector: bool) -> str:
+    """The inputs the tool's schema has: a connector's tools take no model or effort."""
+    if connector:
+        return f"Inputs: {' and '.join(fields)}." if fields else "Takes no inputs."
+    no_ticker = "" if "ticker" in fields else "; no ticker"
+    return f"Inputs: {', '.join([*fields, 'model'])} and an optional effort{no_ticker}."
 
 
 def _effort_property(models: dict[str, list[str]], default_effort: str | None) -> dict[str, Any]:
