@@ -20,7 +20,7 @@ Or with pip: `pip install milton-mcp`.
 
 ## Get an API token
 
-Sign in at [withmilton.ai](https://withmilton.ai), open **Settings → API tokens** and create one. It starts
+Sign in at [withmilton.ai](https://withmilton.ai), open **Integrations → API tokens** and create one. It starts
 with `mlt_`. Treat it like a password: it can start runs that bill to your balance.
 
 ## Claude.ai and ChatGPT
@@ -28,7 +28,7 @@ with `mlt_`. Treat it like a password: it can start runs that bill to your balan
 Milton hosts this server at `https://withmilton.ai/api/mcp`. In Claude.ai (**Settings → Connectors →
 Add custom connector**) or ChatGPT (**add a custom MCP server**), enter that URL; no API token is
 needed. You sign in to Milton, then choose the model and effort the connection uses. Every run from the
-app uses them; to change them, disconnect the app in Milton (**Settings → Connected apps**) and connect
+app uses them; to change them, disconnect the app in Milton (**Integrations → Connected apps**) and connect
 it again.
 
 ## Configure your client

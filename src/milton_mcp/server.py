@@ -88,7 +88,8 @@ class MiltonTools:
         if not token:
             where = "an Authorization bearer token" if self.http_mode else "MILTON_API_KEY"
             return error_result(
-                f"No Milton API key. Create one at {self.settings.base_url}/settings/api-tokens and send it as {where}."
+                f"No Milton API key. Create one at {self.settings.base_url}/integrations/api-tokens "
+                f"and send it as {where}."
             ), "auth"
         forward = self._forward(ctx)
         arguments = dict(params.arguments or {})

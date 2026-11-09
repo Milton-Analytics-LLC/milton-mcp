@@ -8,7 +8,7 @@ from milton_mcp.errors import api_error_sentence
 from tests.fakes import BASE_URL, FakeMilton
 
 CASES = [
-    (401, {}, None, "Create one at https://milton.test/settings/api-tokens and set it as MILTON_API_KEY"),
+    (401, {}, None, "Create one at https://milton.test/integrations/api-tokens and set it as MILTON_API_KEY"),
     (402, {"code": "insufficient_balance"}, None, "Add credits at https://milton.test/billing/balance"),
     (
         402,

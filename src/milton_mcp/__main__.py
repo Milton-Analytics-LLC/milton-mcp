@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> None:
     if not settings.api_key:
         sys.exit(
             "milton-mcp: set MILTON_API_KEY to a Milton API token (mlt_…); create one at "
-            f"{settings.base_url}/settings/api-tokens"
+            f"{settings.base_url}/integrations/api-tokens"
         )
     anyio.run(serve_stdio, settings)
 
