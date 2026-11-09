@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "milton-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for Milton's analyst agents: technical, fundamental, macro, trade design and the full desk, through Milton's API."
 readme = "README.md"
 license = "MIT"
