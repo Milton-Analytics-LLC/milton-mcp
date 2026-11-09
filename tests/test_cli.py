@@ -24,6 +24,7 @@ def test_stdio_without_a_key_exits_with_instructions():
     )
     assert proc.returncode != 0
     assert "set MILTON_API_KEY" in proc.stderr
+    assert f"{UNREACHABLE}/integrations/api-tokens" in proc.stderr
 
 
 async def test_stdio_serves_tools_over_a_real_subprocess():

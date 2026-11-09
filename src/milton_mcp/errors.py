@@ -27,7 +27,7 @@ def api_error_sentence(err: ApiError, *, base_url: str, http_mode: bool, run_id:
         where = "the Authorization bearer token" if http_mode else "MILTON_API_KEY"
         return (
             f"Milton rejected the API key (missing, expired or revoked). Create one at "
-            f"{base_url}/settings/api-tokens and set it as {where}."
+            f"{base_url}/integrations/api-tokens and set it as {where}."
         )
     if code == "insufficient_balance":
         return f"Your Milton balance is used up, so no run can start. Add credits at {base_url}/billing/balance."
